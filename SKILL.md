@@ -1,9 +1,12 @@
 ---
 name: dev-docs
 description: 开发文档自动化生成和维护工具。在完成需求开发后自动生成需求文档(PRD)和API接口文档，在代码更新后自动维护CHANGELOG和API CHANGELOG。触发时机：(1) 用户说"生成文档"、"写文档"、"更新文档"时 (2) 完成一个功能开发后 (3) 更新了代码需要同步文档时 (4) 用户提到PRD、API文档、changelog、需求文档时
+platforms: [Cursor IDE, Claude Code]
 ---
 
 # 开发文档自动化工具
+
+> **多平台支持**: 本文件可作为 Cursor IDE 的 Agent Skill (`SKILL.md`) 或 Claude Code 的 `AGENTS.md` 使用。
 
 本技能帮助在开发过程中自动生成和维护项目文档，确保文档与代码保持同步。
 

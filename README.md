@@ -3,10 +3,11 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.7+-blue.svg" alt="Python Version">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
-  <img src="https://img.shields.io/badge/Platform-Cursor%20IDE-purple.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/Cursor-Agent%20Skill-purple.svg" alt="Cursor">
+  <img src="https://img.shields.io/badge/Claude%20Code-AGENTS.md-orange.svg" alt="Claude Code">
 </p>
 
-**dev-docs** 是一个专为 [Cursor IDE](https://cursor.sh) 设计的 Agent Skill，用于自动化生成和维护项目开发文档。它可以帮助开发者在完成功能开发后自动生成需求文档（PRD）、API接口文档，并在代码更新时自动维护 CHANGELOG。
+**dev-docs** 是一个为 AI 编程助手设计的 Agent Skill，支持 [Cursor IDE](https://cursor.sh) 和 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)，用于自动化生成和维护项目开发文档。它可以帮助开发者在完成功能开发后自动生成需求文档（PRD）、API接口文档，并在代码更新时自动维护 CHANGELOG。
 
 ## ✨ 功能特性
 
@@ -14,7 +15,7 @@
 - 📚 **API 文档维护** - 自动检测 API 变更并更新文档
 - 📋 **CHANGELOG 管理** - 遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/) 规范
 - 🔍 **Git 变更分析** - 自动分析代码变更并生成文档更新建议
-- 🤖 **Cursor IDE 集成** - 作为 Agent Skill 无缝集成到 Cursor 工作流
+- 🤖 **多平台支持** - 同时支持 Cursor IDE 和 Claude Code
 
 ## 📦 安装
 
@@ -32,12 +33,28 @@
 
 2. 在 Cursor 中使用时，AI 会自动识别并使用此 Skill
 
-### 方式二：独立使用脚本
+### 方式二：作为 Claude Code AGENTS.md 安装
+
+1. 将 `SKILL.md` 的内容复制到项目根目录的 `AGENTS.md` 文件中：
+   
+   ```bash
+   # 克隆仓库
+   git clone https://github.com/lilyjem/dev-docs-skill.git
+   
+   # 复制到你的项目
+   cp dev-docs-skill/SKILL.md your-project/AGENTS.md
+   ```
+
+2. 或者直接在项目中创建 `AGENTS.md`，将 `SKILL.md` 内容粘贴进去
+
+3. Claude Code 会自动读取 `AGENTS.md` 并遵循其中的指导
+
+### 方式三：独立使用脚本
 
 1. 克隆仓库：
    
    ```bash
-   git clone https://github.com/YOUR_USERNAME/dev-docs-skill.git
+   git clone https://github.com/lilyjem/dev-docs-skill.git
    cd dev-docs-skill
    ```
 
@@ -212,7 +229,9 @@ python scripts/update_docs.py api -t change -e "GET /api/xxx" -d "变更说明"
 python scripts/update_docs.py changelog -t changed -m "更新XX接口"
 ```
 
-## 🤖 在 Cursor 中使用
+## 🤖 在 AI 编程助手中使用
+
+### Cursor IDE
 
 当此 Skill 安装到 Cursor 后，AI 助手会在以下场景自动触发：
 
@@ -220,6 +239,14 @@ python scripts/update_docs.py changelog -t changed -m "更新XX接口"
 2. **完成一个功能开发后**
 3. **更新了代码需要同步文档时**
 4. **用户提到 PRD、API文档、changelog、需求文档时**
+
+### Claude Code
+
+将 `SKILL.md` 内容放入项目根目录的 `AGENTS.md` 文件后，Claude Code 会：
+
+1. **自动识别文档生成需求** - 当你完成功能开发并请求生成文档时
+2. **遵循标准化模板** - 使用预定义的 PRD、API 文档模板
+3. **维护变更日志** - 自动更新 CHANGELOG 和 API CHANGELOG
 
 ### 示例对话
 
@@ -237,7 +264,7 @@ AI: 好的，我来帮你生成用户认证功能的相关文档...
 
 ```
 dev-docs-skill/
-├── SKILL.md              # Cursor Skill 定义文件
+├── SKILL.md              # Skill 定义文件 (Cursor / Claude Code AGENTS.md)
 ├── README.md             # 本文件
 ├── LICENSE               # MIT 许可证
 ├── CONTRIBUTING.md       # 贡献指南
@@ -250,6 +277,14 @@ dev-docs-skill/
     ├── API.md                # API 文档示例
     └── REQ-example.md        # 需求文档示例
 ```
+
+## 🔄 平台兼容性
+
+| 平台 | 安装方式 | 说明 |
+|------|----------|------|
+| **Cursor IDE** | 复制到 `~/.cursor/skills/` | 作为 Agent Skill 自动加载 |
+| **Claude Code** | 复制到项目 `AGENTS.md` | 作为项目级指导文件 |
+| **其他 AI 工具** | 直接使用 `scripts/` | 命令行工具独立使用 |
 
 ## 🤝 贡献
 
@@ -270,9 +305,11 @@ dev-docs-skill/
 - [Keep a Changelog](https://keepachangelog.com/) - CHANGELOG 格式规范
 - [Semantic Versioning](https://semver.org/) - 语义化版本规范
 - [Cursor IDE](https://cursor.sh) - AI 驱动的代码编辑器
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) - Anthropic 的 AI 编程助手
 
 ---
 
 <p align="center">
-  Made with ❤️ for better documentation
+  Made with ❤️ for better documentation<br>
+  Supporting Cursor IDE & Claude Code
 </p>
