@@ -1,592 +1,249 @@
 ---
 name: dev-docs
-description: 开发文档自动化生成和维护工具。在完成需求开发后自动生成需求文档(PRD)和API接口文档，在代码更新后自动维护CHANGELOG和API CHANGELOG。触发时机：用户说"生成文档"、"写文档"、"更新文档"，或提到PRD、API文档、changelog、需求文档时自动触发。
+description: Use when finishing a feature, fixing a bug, or changing an API and need to write/update PRD, API docs, CHANGELOG, or API CHANGELOG. Triggers include phrases like "生成文档"、"写文档"、"更新文档"、"补充 PRD"、"维护 changelog"、"接口文档"、"release notes"，or after completing development tasks that affect users or API consumers.
 ---
 
-# 开发文档自动化工具
+# 开发文档自动化 Skill
 
-> **多平台支持**: 本文件可作为 Cursor IDE 的 Skill (`~/.cursor/skills/`) 或 Claude Code 的 Skill (`~/.claude/skills/`) 使用。
+## Overview
 
-本技能帮助在开发过程中自动生成和维护项目文档，确保文档与代码保持同步。
+把"开发完成"和"文档完成"绑定。本 Skill 提供：
 
-## 核心工作流
+- 4 套标准模板（PRD、API、CHANGELOG、API CHANGELOG）位于 `templates/`
+- 3 个自动化脚本（变更分析、文档更新、文档校验）位于 `scripts/`
+- 3 个 AI prompt 模板（让 LLM 根据 git diff 生成更智能的文档描述）位于 `prompts/`
+- 多语言 API 识别能力：Python（FastAPI/Flask/Django）、Node.js（Express/Koa/NestJS）、Java（Spring）、Go（Gin/Echo/net-http），以及通用 OpenAPI/Swagger 解析
 
-### 流程 1：新功能开发完成 → 生成文档
-
-当完成一个新功能的开发后，执行以下步骤：
-
-1. **分析代码变更**
-   - 识别新增/修改的文件
-   - 提取新增的 API 接口
-   - 识别数据模型变更
-
-2. **生成需求文档** → `docs/requirements/REQ-{feature_name}.md`
-
-3. **更新 API 文档** → `docs/api/API.md`
-
-4. **更新 CHANGELOG** → `docs/CHANGELOG.md`
-
-5. **更新 API CHANGELOG** → `docs/api/API_CHANGELOG.md`
-
-### 流程 2：代码更新 → 更新文档
-
-当对现有功能进行修改后：
-
-1. **识别变更类型** (Added/Changed/Fixed/Removed)
-2. **更新对应的需求文档**
-3. **更新 API 文档**（如有接口变更）
-4. **追加 CHANGELOG 条目**
+**核心原则**：每次代码变更都应有对应文档变更——CHANGELOG 是必填项，PRD 在新功能时创建，API 文档在接口变更时同步。
 
 ---
 
-## 文档模板
+## When to Use
 
-### 需求文档模板 (PRD)
+**应当使用的场景：**
+- 完成新功能开发，需要补 PRD 和 CHANGELOG
+- 修改/新增/废弃 API 接口
+- 修复 bug 后需要追加 CHANGELOG（Fixed 段）
+- 准备发版，需要把 `[Unreleased]` 转为正式版本
+- 收到"生成文档"、"更新文档"、"维护 changelog"、"补充 API 文档"等请求
+- 代码 review 时发现文档与代码不同步
 
-文件位置：`docs/requirements/REQ-{feature_name}.md`
-
-```markdown
-# {功能名称} - 需求文档
-
-## 文档信息
-| 属性 | 值 |
-|------|-----|
-| 文档编号 | REQ-{编号} |
-| 版本 | v1.0 |
-| 创建日期 | {YYYY-MM-DD} |
-| 最后更新 | {YYYY-MM-DD} |
-| 作者 | {作者} |
-| 状态 | 草稿/评审中/已批准/已实现 |
+**不应使用的场景：**
+- 临时探索性脚本、一次性实验代码（不需要文档化）
+- 仅修改注释、格式化、重命名（无用户可见变化）
+- 内部重构且不影响外部接口（除非影响显著，仅在 CHANGELOG `Changed` 段记录）
+- 项目尚未初始化文档目录（先运行 `python scripts/update_docs.py init`）
 
 ---
 
-## 1. 功能概述
+## Quick Reference
 
-### 1.1 简要描述
-{一句话描述该功能的核心目的}
-
-### 1.2 关键词
-{功能相关的关键术语}
-
----
-
-## 2. 背景和目标
-
-### 2.1 背景
-{为什么需要这个功能？解决什么问题？}
-
-### 2.2 目标
-- 目标 1：{具体可衡量的目标}
-- 目标 2：{具体可衡量的目标}
-
-### 2.3 非目标
-{明确声明此功能不做什么}
-
----
-
-## 3. 功能需求
-
-### 3.1 用户故事
-| 编号 | 角色 | 需求 | 价值 |
-|------|------|------|------|
-| US-01 | 作为{角色} | 我希望{功能} | 以便{价值} |
-
-### 3.2 功能清单
-| 编号 | 功能名称 | 优先级 | 描述 |
-|------|----------|--------|------|
-| F-01 | {功能名} | P0/P1/P2 | {详细描述} |
-
-### 3.3 业务规则
-- BR-01：{业务规则描述}
-
----
-
-## 4. 非功能需求
-
-### 4.1 性能要求
-- 响应时间：{具体指标}
-- 吞吐量：{具体指标}
-
-### 4.2 安全要求
-- {安全相关要求}
-
-### 4.3 兼容性
-- {浏览器/系统兼容性要求}
-
----
-
-## 5. UI/交互设计
-
-### 5.1 页面布局
-{描述或引用设计稿}
-
-### 5.2 交互流程
-{用户操作的步骤流程}
-
-### 5.3 状态说明
-| 状态 | 显示效果 | 触发条件 |
+| 场景 | 必更文档 | 命令入口 |
 |------|----------|----------|
-| {状态名} | {效果} | {条件} |
+| 新功能 | PRD + CHANGELOG（Added）+ API 文档（如有接口） | `req` → `changelog -t added` → `api -t add` |
+| 接口变更 | API.md + API_CHANGELOG + CHANGELOG | `api -t change` → 手动改 API.md |
+| Bug 修复 | CHANGELOG（Fixed） | `changelog -t fixed` |
+| 废弃接口 | API_CHANGELOG（标注迁移路径） | `api -t deprecate` |
+| 移除接口 | API_CHANGELOG + CHANGELOG（Breaking） | `api -t remove` → `changelog -t removed` |
+| 发版 | 把 [Unreleased] 转正 + 打 tag | `release --version x.y.z` |
+| 文档校验 | 校验格式/链接/版本 | `validate` |
+
+| 文件 | 路径 | 作用 |
+|------|------|------|
+| PRD 模板 | `templates/PRD.md` | 需求文档结构 |
+| API 模板 | `templates/API.md` | 接口文档结构 |
+| CHANGELOG 模板 | `templates/CHANGELOG.md` | Keep a Changelog 格式 |
+| API CHANGELOG 模板 | `templates/API_CHANGELOG.md` | 接口变更追踪 |
+| 变更分析 | `scripts/analyze_changes.py` | 解析 git diff，识别 API 改动 |
+| 文档更新 | `scripts/update_docs.py` | 维护 CHANGELOG / API CHANGELOG / PRD |
+| 文档校验 | `scripts/validate_docs.py` | 校验格式、链接、版本一致性 |
+| API 文档生成 | `scripts/generate_api_doc.py` | 从代码/OpenAPI 生成完整 API.md |
+| AI Prompt 模板 | `prompts/*.md` | 让 LLM 写更智能的描述 |
 
 ---
 
-## 6. 数据模型
+## Core Workflow
 
-### 6.1 新增/修改的数据表
-{使用 Mermaid ER 图或表格描述}
-
-### 6.2 数据字段说明
-| 字段名 | 类型 | 必填 | 描述 |
-|--------|------|------|------|
-| {字段} | {类型} | 是/否 | {说明} |
-
----
-
-## 7. 验收标准
-
-### 7.1 功能验收
-- [ ] AC-01：{验收条件}
-- [ ] AC-02：{验收条件}
-
-### 7.2 测试用例
-| 用例编号 | 描述 | 预期结果 |
-|----------|------|----------|
-| TC-01 | {测试步骤} | {预期结果} |
-
----
-
-## 8. 时间节点
-
-| 里程碑 | 计划日期 | 实际日期 | 状态 |
-|--------|----------|----------|------|
-| 需求评审 | {日期} | {日期} | {状态} |
-| 开发完成 | {日期} | {日期} | {状态} |
-| 测试完成 | {日期} | {日期} | {状态} |
-| 上线发布 | {日期} | {日期} | {状态} |
-
----
-
-## 附录
-
-### A. 相关文档
-- [API 文档](../api/API.md)
-- [架构文档](../architecture.md)
-
-### B. 变更历史
-| 版本 | 日期 | 作者 | 变更说明 |
-|------|------|------|----------|
-| v1.0 | {日期} | {作者} | 初始版本 |
-```
-
----
-
-### API 文档模板
-
-文件位置：`docs/api/API.md`
-
-```markdown
-# {项目名称} API 接口文档
-
-## 文档信息
-| 属性 | 值 |
-|------|-----|
-| 版本 | v{版本号} |
-| 最后更新 | {YYYY-MM-DD} |
-| 基础URL | {API基础路径} |
-
----
-
-## 1. 概述
-
-### 1.1 简介
-{API 的用途和范围}
-
-### 1.2 基础信息
-- **协议**: HTTPS
-- **数据格式**: JSON
-- **字符编码**: UTF-8
-
----
-
-## 2. 认证方式
-
-### 2.1 认证类型
-{JWT / API Key / OAuth 等}
-
-### 2.2 认证方式
-```
-Authorization: Bearer {token}
-```
-
-### 2.3 获取 Token
-{获取认证 Token 的方式}
-
----
-
-## 3. 接口列表
-
-### 3.1 {模块名称}
-
-#### {接口名称}
-
-| 属性 | 值 |
-|------|-----|
-| 路径 | `{HTTP方法} {路径}` |
-| 认证 | 是/否/可选 |
-| 描述 | {接口功能描述} |
-
-**请求参数**
-
-| 参数名 | 位置 | 类型 | 必填 | 描述 |
-|--------|------|------|------|------|
-| {参数} | path/query/body | {类型} | 是/否 | {描述} |
-
-**请求示例**
-```json
-{
-  "field": "value"
-}
-```
-
-**响应参数**
-
-| 参数名 | 类型 | 描述 |
-|--------|------|------|
-| {参数} | {类型} | {描述} |
-
-**响应示例**
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {}
-}
-```
-
----
-
-## 4. 数据模型
-
-### 4.1 {模型名称}
-
-| 字段名 | 类型 | 必填 | 描述 |
-|--------|------|------|------|
-| {字段} | {类型} | 是/否 | {描述} |
-
----
-
-## 5. 错误码说明
-
-| 错误码 | HTTP状态码 | 描述 | 解决方案 |
-|--------|------------|------|----------|
-| 0 | 200 | 成功 | - |
-| 10001 | 400 | 参数错误 | 检查请求参数 |
-| 10002 | 401 | 未授权 | 检查认证信息 |
-| 10003 | 403 | 禁止访问 | 检查权限 |
-| 10004 | 404 | 资源不存在 | 检查请求路径 |
-| 10005 | 500 | 服务器错误 | 联系管理员 |
-
----
-
-## 6. 调用示例
-
-### 6.1 cURL
-```bash
-curl -X POST "{base_url}/api/endpoint" \
-  -H "Authorization: Bearer {token}" \
-  -H "Content-Type: application/json" \
-  -d '{"key": "value"}'
-```
-
-### 6.2 Python
-```python
-import requests
-
-response = requests.post(
-    "{base_url}/api/endpoint",
-    headers={"Authorization": f"Bearer {token}"},
-    json={"key": "value"}
-)
-print(response.json())
-```
-
-### 6.3 JavaScript
-```javascript
-const response = await fetch("{base_url}/api/endpoint", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${token}`,
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({ key: "value" })
-});
-const data = await response.json();
-```
-```
-
----
-
-### CHANGELOG 模板
-
-文件位置：`docs/CHANGELOG.md`
-
-遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 格式：
-
-```markdown
-# Changelog
-
-本文件记录项目的所有重要变更。
-
-格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
-版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
-
-## [Unreleased]
-
-### Added
-- {新增的功能}
-
-### Changed
-- {修改的功能}
-
-### Fixed
-- {修复的问题}
-
-### Removed
-- {移除的功能}
-
----
-
-## [1.0.0] - {YYYY-MM-DD}
-
-### Added
-- 初始版本发布
-- {功能1}
-- {功能2}
-
----
-
-[Unreleased]: {repo_url}/compare/v1.0.0...HEAD
-[1.0.0]: {repo_url}/releases/tag/v1.0.0
-```
-
----
-
-### API CHANGELOG 模板
-
-文件位置：`docs/api/API_CHANGELOG.md`
-
-```markdown
-# API Changelog
-
-本文件记录 API 接口的所有变更。
-
-## [Unreleased]
-
-### 新增接口
-- `{METHOD} {path}` - {描述}
-
-### 接口变更
-- `{METHOD} {path}` - {变更说明}
-
-### 废弃接口
-- `{METHOD} {path}` - 将在 v{版本} 移除，请使用 {替代接口}
-
-### 移除接口
-- `{METHOD} {path}` - {原因}
-
----
-
-## [1.0.0] - {YYYY-MM-DD}
-
-### 新增接口
-- `POST /api/xxx` - {描述}
-- `GET /api/xxx` - {描述}
-```
-
----
-
-## 执行步骤
-
-### 步骤 1：初始化文档结构
-
-首次使用时，检查并创建文档目录结构：
+### 决策流：来了变更，该走哪条路？
 
 ```
-docs/
-├── CHANGELOG.md           # 项目变更日志
-├── architecture.md        # 架构文档（已存在）
-├── api/
-│   ├── API.md            # API 接口文档
-│   └── API_CHANGELOG.md  # API 变更日志
-└── requirements/
-    └── REQ-{feature}.md  # 各功能的需求文档
+变更类型？
+├─ 新功能 ──────────► [W1: 新功能流程]
+├─ 接口变更 ────────► [W2: 接口流程]
+├─ Bug 修复 ────────► [W3: 修复流程]
+└─ 准备发版 ────────► [W4: 发版流程]
 ```
 
-### 步骤 2：分析代码变更
-
-1. 检查 git status 获取变更文件列表
-2. 分析新增/修改的 API 接口
-3. 识别数据模型变更
-4. 提取功能名称和描述
-
-### 步骤 3：生成/更新文档
-
-根据变更类型执行相应操作：
-
-| 变更类型 | 操作 |
-|----------|------|
-| 新功能 | 创建需求文档 + 更新 API 文档 + 追加 CHANGELOG |
-| 功能修改 | 更新需求文档 + 更新 API 文档 + 追加 CHANGELOG |
-| Bug 修复 | 追加 CHANGELOG (Fixed) |
-| 接口变更 | 更新 API 文档 + 追加 API CHANGELOG |
-
-### 步骤 4：验证文档
-
-- 检查 Markdown 格式正确
-- 确保链接有效
-- 验证版本号一致
-
----
-
-## 自动化脚本
-
-本技能提供两个自动化脚本，位于 `scripts/` 目录下。
-
-### 脚本 1：analyze_changes.py - 分析 Git 变更
-
-自动分析 Git 变更并生成文档更新建议。
-
-**用法**
+### W1：新功能流程
 
 ```bash
-# 分析当前未提交的变更
+# 1. 分析变更，识别 API 改动（多语言自动识别）
 python scripts/analyze_changes.py
 
-# 分析从指定 commit 到 HEAD 的变更
-python scripts/analyze_changes.py --since HEAD~5
+# 2. 创建需求文档
+python scripts/update_docs.py req -n "feature-name" -t "功能标题" -a "Jem"
+#   → 生成 docs/requirements/REQ-feature-name.md，按 templates/PRD.md 结构
 
-# 输出为 JSON 格式
-python scripts/analyze_changes.py --json
+# 3. 追加 CHANGELOG
+python scripts/update_docs.py changelog -t added -m "支持邮箱登录"
 
-# 保存到文件
-python scripts/analyze_changes.py --output changes_report.txt
+# 4. 如有新接口
+python scripts/update_docs.py api -t add -e "POST /api/auth/login" -d "邮箱密码登录"
+
+# 5.（可选）从代码自动生成 API.md
+python scripts/generate_api_doc.py --source ./src --output docs/api/API.md
+
+# 6. 校验文档
+python scripts/validate_docs.py
 ```
 
-**输出内容**
+### W2：接口变更流程
 
-- 变更文件列表（Added/Modified/Deleted）
-- API 变更检测（识别新增/修改/删除的接口）
-- 建议更新的文档列表
-- CHANGELOG 条目建议
-- API CHANGELOG 条目建议
+```bash
+python scripts/update_docs.py api -t change -e "GET /api/users" -d "新增 status 筛选参数"
+# 手动同步 docs/api/API.md 中该接口的参数表与示例
+python scripts/update_docs.py changelog -t changed -m "用户列表接口支持按状态筛选"
+```
 
-### 脚本 2：update_docs.py - 更新文档
+> **Breaking Change** 必须在 API_CHANGELOG 条目前加 `⚠️ Breaking` 并在 CHANGELOG 中独立成段。
 
-提供命令行工具来更新各类文档。
+### W3：Bug 修复流程
 
-**初始化文档目录**
+```bash
+python scripts/update_docs.py changelog -t fixed -m "修复日期跨时区解析错误"
+```
+
+### W4：发版流程
+
+```bash
+# 把 [Unreleased] 段落转换为正式版本，自动注入日期与对比链接
+python scripts/update_docs.py release --version 1.2.0
+
+# 同时处理 API_CHANGELOG（如有变更）
+python scripts/update_docs.py release --version 1.2.0 --target api
+
+# 打 tag（手动）
+git tag -a v1.2.0 -m "Release 1.2.0"
+```
+
+---
+
+## Documentation Structure
+
+每次启动新项目，先运行：
 
 ```bash
 python scripts/update_docs.py init
 ```
 
-**更新 CHANGELOG**
+生成的目录结构：
 
-```bash
-# 添加新功能
-python scripts/update_docs.py changelog -t added -m "新增用户认证功能"
-
-# 记录变更
-python scripts/update_docs.py changelog -t changed -m "优化PDF解析性能"
-
-# 记录修复
-python scripts/update_docs.py changelog -t fixed -m "修复日期格式解析错误"
-
-# 记录移除
-python scripts/update_docs.py changelog -t removed -m "移除旧版API支持"
 ```
-
-**更新 API CHANGELOG**
-
-```bash
-# 新增接口
-python scripts/update_docs.py api -t add -e "POST /api/users" -d "创建用户"
-
-# 接口变更
-python scripts/update_docs.py api -t change -e "GET /api/users" -d "新增分页参数"
-
-# 废弃接口
-python scripts/update_docs.py api -t deprecate -e "GET /api/old" -d "将在v2.0移除"
-
-# 移除接口
-python scripts/update_docs.py api -t remove -e "DELETE /api/legacy" -d "已废弃"
-```
-
-**创建需求文档**
-
-```bash
-# 创建新的需求文档
-python scripts/update_docs.py req -n "user-auth" -t "用户认证功能" -a "Jem"
-
-# 强制覆盖已存在的文档
-python scripts/update_docs.py req -n "user-auth" --force
+docs/
+├── CHANGELOG.md              # 项目变更日志
+├── architecture.md            # 架构文档（已有则跳过）
+├── api/
+│   ├── API.md                # API 接口详细文档
+│   ├── API_CHANGELOG.md      # API 变更日志
+│   └── openapi.yaml          # （可选）OpenAPI 规范
+└── requirements/
+    └── REQ-{feature}.md      # 各功能的需求文档
 ```
 
 ---
 
-## 典型工作流
+## Multi-Language API Recognition
 
-### 工作流 1：新功能开发
+`analyze_changes.py` 自动识别以下框架的接口定义。所有模式集中在 `scripts/api_patterns.py`，方便扩展。
 
-```bash
-# 1. 开发完成后，分析代码变更
-python scripts/analyze_changes.py
-
-# 2. 创建需求文档
-python scripts/update_docs.py req -n "feature-name" -t "功能标题"
-# 编辑生成的需求文档，填写详细内容
-
-# 3. 更新 CHANGELOG
-python scripts/update_docs.py changelog -t added -m "新增XX功能"
-
-# 4. 如果有新 API，更新 API 文档
-python scripts/update_docs.py api -t add -e "POST /api/xxx" -d "接口描述"
-
-# 5. 提交代码和文档
-git add .
-git commit -m "feat: 新增XX功能"
-```
-
-### 工作流 2：Bug 修复
-
-```bash
-# 1. 修复完成后，更新 CHANGELOG
-python scripts/update_docs.py changelog -t fixed -m "修复XX问题"
-
-# 2. 提交
-git add .
-git commit -m "fix: 修复XX问题"
-```
-
-### 工作流 3：API 变更
-
-```bash
-# 1. 更新 API CHANGELOG
-python scripts/update_docs.py api -t change -e "GET /api/xxx" -d "变更说明"
-
-# 2. 手动更新 API.md 中的接口详情
-
-# 3. 更新 CHANGELOG
-python scripts/update_docs.py changelog -t changed -m "更新XX接口"
-```
+| 语言 | 框架 | 识别模式 |
+|------|------|----------|
+| Python | FastAPI | `@app.get(...)`、`@router.post(...)` |
+| Python | Flask | `@app.route("/path", methods=["POST"])` |
+| Python | Django | `path("...", view)`、`url(r"...")` |
+| Node.js | Express/Koa | `app.get("/path", ...)`、`router.post(...)` |
+| Node.js | NestJS | `@Get(...)`、`@Post(...)` 控制器装饰器 |
+| Java | Spring | `@GetMapping`、`@PostMapping`、`@RequestMapping` |
+| Go | Gin | `r.GET("/path", handler)`、`r.POST(...)` |
+| Go | Echo | `e.GET(...)`、`e.POST(...)` |
+| Go | net/http | `http.HandleFunc("/path", ...)`、`mux.Handle(...)` |
+| 通用 | OpenAPI 3.0 | 解析 `openapi.yaml` / `openapi.json` |
 
 ---
 
-## 最佳实践
+## AI Prompt Templates
 
-1. **及时更新**：每次代码提交前检查是否需要更新文档
-2. **版本同步**：CHANGELOG 版本号与 Git Tag 保持一致
-3. **清晰描述**：变更说明要具体，避免模糊的描述如"修复bug"
-4. **关联引用**：需求文档和 API 文档互相引用
-5. **中文注释**：所有文档和代码注释使用中文
-6. **先分析后更新**：使用 analyze_changes.py 先分析变更，再使用 update_docs.py 更新
+当 git diff 信息丰富时，仅靠正则无法生成高质量描述。`prompts/` 提供了三个为 LLM 设计的 prompt 模板：
+
+| 模板 | 用途 |
+|------|------|
+| `prompts/changelog_from_diff.md` | 把 git diff + commit messages → CHANGELOG 用户视角条目 |
+| `prompts/api_doc_from_code.md` | 从代码 + docstring → 完整接口文档段落 |
+| `prompts/prd_from_feature.md` | 从功能描述 + 代码改动 → PRD 草稿 |
+
+在 Cursor / Claude Code 中使用：
+
+```
+用户：帮我用 prompts/changelog_from_diff.md 模板，根据当前 git diff 生成 CHANGELOG
+```
+
+AI 会读取模板、注入 diff、产出符合 Keep a Changelog 风格的条目。
+
+---
+
+## Common Mistakes
+
+| 错误做法 | 正确做法 |
+|----------|----------|
+| CHANGELOG 写"修改 auth.py" | 写"支持邮箱密码登录"（用户视角） |
+| 废弃接口直接删除 | 先用 `api -t deprecate` 标注迁移路径，下个大版本再删 |
+| Breaking Change 不显式标注 | API_CHANGELOG 条目前必须加 `⚠️ Breaking` |
+| PRD 占位符不替换就交付 | 用 `validate_docs.py` 检查残留的 `{xxx}` 与 `[待填写：]` |
+| API 路径硬编码到 PRD | PRD 只列接口清单，详情链接到 API.md |
+| 多人同一天编辑 [Unreleased] 冲突 | 让脚本插入新条目（自动避免格式破坏） |
+| 一次发版混入未发布的实验功能 | 发版前 review [Unreleased] 段落，移除未发布特性 |
+
+---
+
+## Red Flags - STOP
+
+如果你有这些念头，停下来检查：
+
+- "改动很小，不用更新 CHANGELOG" → 任何用户可见变更都要记录
+- "改完代码再补文档" → 代码合并 = 文档同步合并，否则永远不会补
+- "API 变了但只改了实现" → 任何外部可观察的行为都是 API 的一部分
+- "直接编辑 docs/CHANGELOG.md 更快" → 用脚本以保证格式与链接正确
+- "PRD 模板太重，简化几节吧" → 删占位符可，但保留 8 个一级章节框架
+
+---
+
+## Validation Checklist
+
+提交前自检（也可用 `python scripts/validate_docs.py`）：
+
+- [ ] CHANGELOG 中所有变更条目都从用户视角描述
+- [ ] 每个新接口都同时出现在 API.md（详情）和 API_CHANGELOG.md（条目）
+- [ ] Breaking Change 已显式标注 `⚠️ Breaking`
+- [ ] PRD 已无 `{占位符}` 与 `[待填写：]`
+- [ ] CHANGELOG 版本号与 `package.json` / `pyproject.toml` 等一致
+- [ ] 文档内的相对链接均可访问
+- [ ] 发版条目包含日期，且日期格式为 `YYYY-MM-DD`
+
+---
+
+## Best Practices
+
+1. **频率优先于完美**：每次提交都顺手补一行 CHANGELOG，胜过一周后回忆。
+2. **用户视角描述**：CHANGELOG 写"用户能感知的变化"，不是"哪个文件改了"。
+3. **PRD 与代码互链**：PRD 链 API.md，API.md 顶部链 PRD，便于追溯。
+4. **中文注释、中文文档**：与代码注释保持一致语种。
+5. **脚本优先于手改**：能用 `update_docs.py` 完成就别手改 Markdown，避免破坏链接定义与格式。
+6. **校验进 CI**：把 `validate_docs.py` 接入 CI，未通过禁止合并。
+
+---
+
+## Cross-References
+
+- 写 SKILL 本身：参见 `superpowers:writing-skills`
+- TDD 实现：参见 `superpowers:test-driven-development`
+- 验证完成：参见 `superpowers:verification-before-completion`

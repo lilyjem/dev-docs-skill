@@ -1,388 +1,135 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-自动更新文档工具
+开发文档自动更新工具（多语言版）
 
-使用方法:
+用法:
     python update_docs.py <action> [options]
-    
+
 Actions:
-    init        初始化文档目录结构
-    changelog   更新 CHANGELOG.md
-    api         更新 API 文档和 API CHANGELOG
-    req         创建或更新需求文档
-    
+    init        初始化文档目录与 CHANGELOG / API_CHANGELOG 骨架
+    changelog   往 CHANGELOG.md 追加条目
+    api         往 API_CHANGELOG.md 追加条目
+    req         按 templates/PRD.md 模板创建需求文档
+    release     把 [Unreleased] 段落转换为正式版本
+
 Examples:
     python update_docs.py init
-    python update_docs.py changelog --type added --message "新增XX功能"
-    python update_docs.py api --endpoint "POST /api/xxx" --description "新增接口"
-    python update_docs.py req --name "user-auth" --title "用户认证功能"
+    python update_docs.py changelog -t added -m "支持邮箱登录"
+    python update_docs.py api -t add -e "POST /api/login" -d "邮箱密码登录"
+    python update_docs.py req -n "user-auth" -t "用户认证" -a "Jem"
+    python update_docs.py release --version 1.2.0
+    python update_docs.py release --version 1.2.0 --target api    # 处理 API_CHANGELOG
 """
 
-import os
-import re
+from __future__ import annotations
+
 import argparse
-from pathlib import Path
+import re
+import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 
-# ==================== 配置 ====================
+# ==================== 路径约定 ====================
 
 DOCS_DIR = "docs"
 API_DOCS_DIR = "docs/api"
 REQUIREMENTS_DIR = "docs/requirements"
 
-
-# ==================== 模板 ====================
-
-CHANGELOG_TEMPLATE = '''# Changelog
-
-本文件记录项目的所有重要变更。
-
-格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
-版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
-
-## [Unreleased]
-
-### Added
-- 无
-
-### Changed
-- 无
-
-### Fixed
-- 无
-
-### Removed
-- 无
-
----
-
-[Unreleased]: {repo_url}/compare/v1.0.0...HEAD
-'''
-
-API_CHANGELOG_TEMPLATE = '''# API Changelog
-
-本文件记录 API 接口的所有变更。
-
-## [Unreleased]
-
-### 新增接口
-- 无
-
-### 接口变更
-- 无
-
-### 废弃接口
-- 无
-
-### 移除接口
-- 无
-
----
-'''
-
-API_DOC_TEMPLATE = '''# {project_name} API 接口文档
-
-## 文档信息
-
-| 属性 | 值 |
-|------|-----|
-| 版本 | v1.0.0 |
-| 最后更新 | {date} |
-| 基础URL | `{base_url}` |
-
----
-
-## 1. 概述
-
-### 1.1 简介
-
-{description}
-
-### 1.2 基础信息
-
-- **协议**: HTTP/HTTPS
-- **数据格式**: JSON
-- **字符编码**: UTF-8
-
----
-
-## 2. 认证方式
-
-### 2.1 认证类型
-
-{auth_type}
-
-### 2.2 认证方式
-
-```
-Authorization: Bearer {{token}}
-```
-
----
-
-## 3. 接口列表
-
-{endpoints}
-
----
-
-## 4. 数据模型
-
-{models}
-
----
-
-## 5. 错误码说明
-
-| 错误码 | HTTP状态码 | 描述 | 解决方案 |
-|--------|------------|------|----------|
-| - | 200 | 成功 | - |
-| - | 400 | 请求参数错误 | 检查请求参数格式 |
-| - | 401 | 未授权 | 检查Token是否有效 |
-| - | 403 | 禁止访问 | 检查用户权限 |
-| - | 404 | 资源不存在 | 检查请求路径 |
-| - | 500 | 服务器内部错误 | 联系管理员 |
-
----
-
-## 附录
-
-### A. 相关文档
-
-- [架构文档](../architecture.md)
-- [API变更日志](./API_CHANGELOG.md)
-'''
-
-REQUIREMENT_TEMPLATE = '''# {title} - 需求文档
-
-## 文档信息
-
-| 属性 | 值 |
-|------|-----|
-| 文档编号 | REQ-{number} |
-| 版本 | v1.0 |
-| 创建日期 | {date} |
-| 最后更新 | {date} |
-| 作者 | {author} |
-| 状态 | 草稿 |
-
----
-
-## 1. 功能概述
-
-### 1.1 简要描述
-
-{brief_description}
-
-### 1.2 关键词
-
-{keywords}
-
----
-
-## 2. 背景和目标
-
-### 2.1 背景
-
-{background}
-
-### 2.2 目标
-
-- 目标 1：{goal1}
-- 目标 2：{goal2}
-
-### 2.3 非目标
-
-{non_goals}
-
----
-
-## 3. 功能需求
-
-### 3.1 用户故事
-
-| 编号 | 角色 | 需求 | 价值 |
-|------|------|------|------|
-| US-01 | 作为{role} | 我希望{want} | 以便{value} |
-
-### 3.2 功能清单
-
-| 编号 | 功能名称 | 优先级 | 描述 |
-|------|----------|--------|------|
-| F-01 | {feature_name} | P0 | {feature_description} |
-
-### 3.3 业务规则
-
-- BR-01：{business_rule}
-
----
-
-## 4. 非功能需求
-
-### 4.1 性能要求
-
-- 响应时间：{performance}
-- 吞吐量：{throughput}
-
-### 4.2 安全要求
-
-- {security}
-
-### 4.3 兼容性
-
-- {compatibility}
-
----
-
-## 5. UI/交互设计
-
-### 5.1 页面布局
-
-{ui_layout}
-
-### 5.2 交互流程
-
-{interaction_flow}
-
-### 5.3 状态说明
-
-| 状态 | 显示效果 | 触发条件 |
-|------|----------|----------|
-| {state} | {display} | {trigger} |
-
----
-
-## 6. 数据模型
-
-### 6.1 数据表
-
-{data_tables}
-
-### 6.2 数据字段说明
-
-| 字段名 | 类型 | 必填 | 描述 |
-|--------|------|------|------|
-| {field} | {type} | 是/否 | {field_description} |
-
----
-
-## 7. 验收标准
-
-### 7.1 功能验收
-
-- [ ] AC-01：{acceptance_criteria}
-
-### 7.2 测试用例
-
-| 用例编号 | 描述 | 预期结果 |
-|----------|------|----------|
-| TC-01 | {test_case} | {expected_result} |
-
----
-
-## 8. 时间节点
-
-| 里程碑 | 计划日期 | 实际日期 | 状态 |
-|--------|----------|----------|------|
-| 需求评审 | {date} | - | 待开始 |
-| 开发完成 | {date} | - | 待开始 |
-| 测试完成 | {date} | - | 待开始 |
-| 上线发布 | {date} | - | 待开始 |
-
----
-
-## 附录
-
-### A. 相关文档
-
-- [API 文档](../api/API.md)
-- [架构文档](../architecture.md)
-
-### B. 变更历史
-
-| 版本 | 日期 | 作者 | 变更说明 |
-|------|------|------|----------|
-| v1.0 | {date} | {author} | 初始版本 |
-'''
+# templates/ 与 update_docs.py 同级（脚本所在目录的 ../templates）
+SCRIPT_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = SCRIPT_DIR.parent / "templates"
 
 
 # ==================== 工具函数 ====================
 
 def ensure_dir(path: str) -> None:
-    """确保目录存在"""
     Path(path).mkdir(parents=True, exist_ok=True)
 
 
 def read_file(path: str) -> Optional[str]:
-    """读取文件内容"""
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
+        return Path(path).read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
         return None
 
 
 def write_file(path: str, content: str) -> None:
-    """写入文件"""
-    ensure_dir(str(Path(path).parent))
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
+    """写入文件（必要时自动创建父目录）"""
+    target = Path(path)
+    ensure_dir(str(target.parent))
+    target.write_text(content, encoding="utf-8")
     print(f"已写入: {path}")
 
 
+def load_template(name: str) -> str:
+    """从 templates/ 目录加载指定模板。失败时返回 fallback 最小模板。"""
+    template_path = TEMPLATES_DIR / name
+    content = read_file(str(template_path))
+    if content is not None:
+        return content
+    print(f"[警告] 找不到模板 {template_path}，将使用内置最小模板", file=sys.stderr)
+    return _fallback_template(name)
+
+
+def _fallback_template(name: str) -> str:
+    """templates/ 不可用时的最小可用骨架"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    if name == "CHANGELOG.md":
+        return (
+            "# Changelog\n\n"
+            "本文件记录项目的所有重要变更。\n\n"
+            "## [Unreleased]\n\n"
+            "### Added\n- 无\n\n### Changed\n- 无\n\n### Fixed\n- 无\n\n### Removed\n- 无\n"
+        )
+    if name == "API_CHANGELOG.md":
+        return (
+            "# API Changelog\n\n"
+            "## [Unreleased]\n\n"
+            "### 新增接口\n- 无\n\n### 接口变更\n- 无\n\n### 废弃接口\n- 无\n\n### 移除接口\n- 无\n"
+        )
+    return f"# {name}\n\n（模板缺失）\n"
+
+
 def get_next_req_number() -> str:
-    """获取下一个需求文档编号"""
+    """扫描已有 REQ-*.md，返回下一个 3 位编号"""
     req_dir = Path(REQUIREMENTS_DIR)
     if not req_dir.exists():
         return "001"
-    
-    existing = list(req_dir.glob("REQ-*.md"))
-    if not existing:
-        return "001"
-    
-    # 从现有文件中提取编号
     numbers = []
-    for f in existing:
-        content = read_file(str(f))
-        if content:
-            match = re.search(r"文档编号\s*\|\s*REQ-(\d+)", content)
-            if match:
-                numbers.append(int(match.group(1)))
-    
-    if numbers:
-        return f"{max(numbers) + 1:03d}"
-    return f"{len(existing) + 1:03d}"
+    for f in req_dir.glob("REQ-*.md"):
+        content = read_file(str(f)) or ""
+        m = re.search(r"文档编号\s*\|\s*REQ-(\d+)", content)
+        if m:
+            numbers.append(int(m.group(1)))
+    nxt = (max(numbers) + 1) if numbers else len(list(req_dir.glob("REQ-*.md"))) + 1
+    return f"{nxt:03d}"
 
 
 # ==================== 命令实现 ====================
 
-def cmd_init(args):
-    """初始化文档目录结构"""
-    print("正在初始化文档目录结构...")
-    
-    # 创建目录
+def cmd_init(_args) -> None:
+    """初始化文档目录"""
+    print("正在初始化文档目录...")
     ensure_dir(DOCS_DIR)
     ensure_dir(API_DOCS_DIR)
     ensure_dir(REQUIREMENTS_DIR)
-    
-    # 创建 CHANGELOG.md（如果不存在）
-    changelog_path = f"{DOCS_DIR}/CHANGELOG.md"
-    if not Path(changelog_path).exists():
-        repo_url = "https://github.com/your-repo/your-project"
-        write_file(changelog_path, CHANGELOG_TEMPLATE.format(repo_url=repo_url))
-    else:
-        print(f"跳过（已存在）: {changelog_path}")
-    
-    # 创建 API_CHANGELOG.md（如果不存在）
-    api_changelog_path = f"{API_DOCS_DIR}/API_CHANGELOG.md"
-    if not Path(api_changelog_path).exists():
-        write_file(api_changelog_path, API_CHANGELOG_TEMPLATE)
-    else:
-        print(f"跳过（已存在）: {api_changelog_path}")
-    
-    print("文档目录初始化完成！")
+
+    targets = [
+        (f"{DOCS_DIR}/CHANGELOG.md", "CHANGELOG.md"),
+        (f"{API_DOCS_DIR}/API_CHANGELOG.md", "API_CHANGELOG.md"),
+        (f"{API_DOCS_DIR}/API.md", "API.md"),
+    ]
+    for dest, template_name in targets:
+        if Path(dest).exists():
+            print(f"跳过（已存在）: {dest}")
+            continue
+        content = load_template(template_name)
+        write_file(dest, content)
+
+    print("\n✅ 文档目录初始化完成。")
     print(f"""
 目录结构:
 {DOCS_DIR}/
@@ -395,231 +142,259 @@ def cmd_init(args):
 """)
 
 
-def cmd_changelog(args):
-    """更新 CHANGELOG.md"""
-    changelog_path = f"{DOCS_DIR}/CHANGELOG.md"
-    content = read_file(changelog_path)
-    
-    if not content:
-        print(f"错误: {changelog_path} 不存在，请先运行 init 命令")
-        return
-    
-    # 构建新条目
-    change_type = args.type.capitalize()
-    message = args.message
-    today = datetime.now().strftime("%Y-%m-%d")
-    
-    # 查找对应的分类并插入
-    section_pattern = rf"(### {change_type}\n)(- [^\n]+\n|无\n)"
-    
-    def replace_section(match):
+def _insert_into_section(
+    content: str,
+    section_header: str,
+    new_entry: str,
+) -> Optional[str]:
+    """把 new_entry 插入到 `### {section_header}` 标题下的第一个 - 项之前。
+
+    支持「无」占位符替换。返回 None 表示找不到段落。
+    """
+    # 注意：lookahead 允许 section 后面跟空行 / `---` 分隔符 / 下一个 `##` 或 `###`
+    # 这样最后一个 section 后紧跟 `---\n## [1.0.0]` 也能正确闭合
+    pattern = re.compile(
+        rf"(### {re.escape(section_header)}\s*\n)((?:- .*\n|无\s*\n)*?)(?=\s*(?:###|##|---|\Z))",
+        re.MULTILINE,
+    )
+
+    def replace(match: re.Match) -> str:
         header = match.group(1)
-        existing = match.group(2)
-        
-        if existing.strip() == "无":
-            return f"{header}- {message}\n"
-        else:
-            return f"{header}- {message}\n{existing}"
-    
-    new_content = re.sub(section_pattern, replace_section, content, count=1)
-    
-    if new_content == content:
-        print(f"警告: 未找到 '{change_type}' 分类，请检查 CHANGELOG 格式")
-        return
-    
-    write_file(changelog_path, new_content)
-    print(f"已更新 CHANGELOG: [{change_type}] {message}")
+        body = match.group(2)
+        # 如果是占位「无」则整体替换
+        if body.strip() in ("无", "- 无"):
+            return f"{header}- {new_entry}\n"
+        return f"{header}- {new_entry}\n{body}"
+
+    new_content, count = pattern.subn(replace, content, count=1)
+    return new_content if count else None
 
 
-def cmd_api(args):
-    """更新 API 文档和 API CHANGELOG"""
-    api_changelog_path = f"{API_DOCS_DIR}/API_CHANGELOG.md"
-    content = read_file(api_changelog_path)
-    
-    if not content:
-        print(f"错误: {api_changelog_path} 不存在，请先运行 init 命令")
-        return
-    
-    # 构建新条目
-    change_type = args.type
-    endpoint = args.endpoint
-    description = args.description
-    
-    # 映射类型到中文
+def cmd_changelog(args) -> None:
+    """追加 CHANGELOG 条目"""
+    path = f"{DOCS_DIR}/CHANGELOG.md"
+    content = read_file(path)
+    if content is None:
+        print(f"[错误] {path} 不存在，请先运行 init 命令")
+        sys.exit(1)
+
+    section = args.type.capitalize()
+    valid = {"Added", "Changed", "Fixed", "Removed", "Deprecated", "Security"}
+    if section not in valid:
+        print(f"[错误] type 必须是 {valid} 之一")
+        sys.exit(1)
+
+    updated = _insert_into_section(content, section, args.message)
+    if updated is None:
+        print(f"[警告] 未找到 [Unreleased] 中的 '### {section}' 段落，请检查格式")
+        sys.exit(1)
+    write_file(path, updated)
+    print(f"✅ CHANGELOG 已追加 [{section}] {args.message}")
+
+
+def cmd_api(args) -> None:
+    """追加 API CHANGELOG 条目"""
+    path = f"{API_DOCS_DIR}/API_CHANGELOG.md"
+    content = read_file(path)
+    if content is None:
+        print(f"[错误] {path} 不存在，请先运行 init 命令")
+        sys.exit(1)
+
     type_map = {
         "add": "新增接口",
-        "change": "接口变更", 
+        "change": "接口变更",
         "deprecate": "废弃接口",
-        "remove": "移除接口"
+        "remove": "移除接口",
     }
-    section_name = type_map.get(change_type, "接口变更")
-    
-    # 查找对应的分类并插入
-    section_pattern = rf"(### {section_name}\n)(- [^\n]+\n|无\n)"
-    
-    def replace_section(match):
-        header = match.group(1)
-        existing = match.group(2)
-        
-        entry = f"`{endpoint}` - {description}"
-        
-        if existing.strip() == "无":
-            return f"{header}- {entry}\n"
-        else:
-            return f"{header}- {entry}\n{existing}"
-    
-    new_content = re.sub(section_pattern, replace_section, content, count=1)
-    
-    if new_content == content:
-        print(f"警告: 未找到 '{section_name}' 分类，请检查 API CHANGELOG 格式")
-        return
-    
-    write_file(api_changelog_path, new_content)
-    print(f"已更新 API CHANGELOG: [{section_name}] {endpoint}")
+    section_name = type_map.get(args.type)
+    if not section_name:
+        print(f"[错误] type 必须是 {list(type_map.keys())} 之一")
+        sys.exit(1)
+
+    entry = f"`{args.endpoint}` - {args.description}"
+    if args.breaking:
+        entry = f"⚠️ Breaking {entry}"
+
+    updated = _insert_into_section(content, section_name, entry)
+    if updated is None:
+        print(f"[警告] 未找到 [Unreleased] 中的 '### {section_name}' 段落，请检查格式")
+        sys.exit(1)
+    write_file(path, updated)
+    print(f"✅ API CHANGELOG 已追加 [{section_name}] {args.endpoint}")
 
 
-def cmd_req(args):
-    """创建或更新需求文档"""
+def cmd_req(args) -> None:
+    """创建需求文档"""
     name = args.name
     title = args.title or name.replace("-", " ").title()
     author = args.author or "Unknown"
     today = datetime.now().strftime("%Y-%m-%d")
-    
-    # 生成文件名
-    filename = f"REQ-{name}.md"
-    filepath = f"{REQUIREMENTS_DIR}/{filename}"
-    
-    if Path(filepath).exists() and not args.force:
-        print(f"错误: {filepath} 已存在，使用 --force 覆盖")
-        return
-    
-    # 获取编号
+
+    target = f"{REQUIREMENTS_DIR}/REQ-{name}.md"
+    if Path(target).exists() and not args.force:
+        print(f"[错误] {target} 已存在，使用 --force 覆盖")
+        sys.exit(1)
+
+    template = load_template("PRD.md")
     number = get_next_req_number()
-    
-    # 生成内容（使用占位符）
-    content = REQUIREMENT_TEMPLATE.format(
-        title=title,
-        number=number,
-        date=today,
-        author=author,
-        brief_description="[待填写：一句话描述该功能的核心目的]",
-        keywords="[待填写：功能相关的关键术语]",
-        background="[待填写：为什么需要这个功能？解决什么问题？]",
-        goal1="[待填写：具体可衡量的目标]",
-        goal2="[待填写：具体可衡量的目标]",
-        non_goals="[待填写：明确声明此功能不做什么]",
-        role="[角色]",
-        want="[功能]",
-        value="[价值]",
-        feature_name="[功能名]",
-        feature_description="[详细描述]",
-        business_rule="[业务规则描述]",
-        performance="[具体指标]",
-        throughput="[具体指标]",
-        security="[安全相关要求]",
-        compatibility="[兼容性要求]",
-        ui_layout="[描述或引用设计稿]",
-        interaction_flow="[用户操作的步骤流程]",
-        state="[状态名]",
-        display="[效果]",
-        trigger="[条件]",
-        data_tables="[使用 Mermaid ER 图或表格描述]",
-        field="[字段]",
-        type="[类型]",
-        field_description="[说明]",
-        acceptance_criteria="[验收条件]",
-        test_case="[测试步骤]",
-        expected_result="[预期结果]"
+    rendered = (
+        template
+        .replace("{功能名称}", title)
+        .replace("{编号}", number)
+        .replace("{YYYY-MM-DD}", today, 2)
+        .replace("{作者}", author)
+        .replace("{日期}", today)
     )
-    
-    write_file(filepath, content)
-    print(f"已创建需求文档: {filepath}")
-    print(f"文档编号: REQ-{number}")
+
+    write_file(target, rendered)
+    print(f"✅ 已创建需求文档: {target}（编号 REQ-{number}）")
 
 
-def main():
+def cmd_release(args) -> None:
+    """把 [Unreleased] 段落转换为正式版本
+
+    步骤：
+        1. 把 `## [Unreleased]` 改为 `## [{version}] - {date}`
+        2. 在文件顶部插入新的空 `## [Unreleased]` 段
+        3. 维护底部链接定义（如有）
+    """
+    target = (
+        f"{API_DOCS_DIR}/API_CHANGELOG.md"
+        if args.target == "api"
+        else f"{DOCS_DIR}/CHANGELOG.md"
+    )
+    content = read_file(target)
+    if content is None:
+        print(f"[错误] {target} 不存在")
+        sys.exit(1)
+
+    version = args.version.lstrip("v")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 用 [ \t]*$ 避免吞掉换行符（保留段落间空行）
+    if not re.search(r"^## \[Unreleased\][ \t]*$", content, flags=re.MULTILINE):
+        print(f"[错误] 文档中找不到 `## [Unreleased]` 段落，无法发版")
+        sys.exit(1)
+
+    # 1. 把 [Unreleased] 替换为 [version] - date
+    new_unreleased_block = _build_empty_unreleased(args.target)
+    versioned_header = f"## [{version}] - {today}"
+    content_after = re.sub(
+        r"^## \[Unreleased\][ \t]*$",
+        new_unreleased_block + "\n\n" + versioned_header,
+        content,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+    # 2. 维护链接定义（仅 CHANGELOG 才用语义化版本链接）
+    if args.target != "api":
+        content_after = _refresh_changelog_links(content_after, version)
+
+    write_file(target, content_after)
+    print(f"✅ 已发布版本 {version}（{today}）→ {target}")
+
+
+def _build_empty_unreleased(target: str) -> str:
+    """生成空的 [Unreleased] 段落"""
+    if target == "api":
+        return (
+            "## [Unreleased]\n\n"
+            "### 新增接口\n- 无\n\n"
+            "### 接口变更\n- 无\n\n"
+            "### 废弃接口\n- 无\n\n"
+            "### 移除接口\n- 无"
+        )
+    return (
+        "## [Unreleased]\n\n"
+        "### Added\n- 无\n\n"
+        "### Changed\n- 无\n\n"
+        "### Deprecated\n- 无\n\n"
+        "### Removed\n- 无\n\n"
+        "### Fixed\n- 无\n\n"
+        "### Security\n- 无"
+    )
+
+
+def _refresh_changelog_links(content: str, new_version: str) -> str:
+    """维护 CHANGELOG 底部的版本对比链接"""
+    # 找到 [Unreleased] 链接定义
+    pattern = re.compile(
+        r"\[Unreleased\]:\s*(.+?)/compare/(?:v)?([\w.+-]+)\.\.\.HEAD",
+        re.MULTILINE,
+    )
+    m = pattern.search(content)
+    if not m:
+        # 没有链接定义则不强制添加
+        return content
+    repo_url = m.group(1)
+    last_version = m.group(2)
+
+    new_unreleased_link = f"[Unreleased]: {repo_url}/compare/v{new_version}...HEAD"
+    new_version_link = f"[{new_version}]: {repo_url}/compare/v{last_version}...v{new_version}"
+
+    content = pattern.sub(new_unreleased_link, content, count=1)
+    # 在 [Unreleased] 链接行后追加新版本链接（避免重复）
+    if f"[{new_version}]:" not in content:
+        content = re.sub(
+            r"(\[Unreleased\]:.+\n)",
+            r"\1" + new_version_link + "\n",
+            content,
+            count=1,
+        )
+    return content
+
+
+# ==================== CLI ====================
+
+def main() -> None:
     parser = argparse.ArgumentParser(
-        description="自动更新文档工具",
+        description="开发文档自动更新工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-示例:
-  python update_docs.py init
-  python update_docs.py changelog --type added --message "新增XX功能"
-  python update_docs.py api --type add --endpoint "POST /api/xxx" --description "新增接口"
-  python update_docs.py req --name "user-auth" --title "用户认证功能"
-        """
+        epilog=__doc__,
     )
-    
-    subparsers = parser.add_subparsers(dest="command", help="可用命令")
-    
-    # init 命令
-    init_parser = subparsers.add_parser("init", help="初始化文档目录结构")
-    init_parser.set_defaults(func=cmd_init)
-    
-    # changelog 命令
-    cl_parser = subparsers.add_parser("changelog", help="更新 CHANGELOG.md")
-    cl_parser.add_argument(
-        "--type", "-t",
-        required=True,
-        choices=["added", "changed", "fixed", "removed"],
-        help="变更类型"
-    )
-    cl_parser.add_argument(
-        "--message", "-m",
-        required=True,
-        help="变更描述"
-    )
-    cl_parser.set_defaults(func=cmd_changelog)
-    
-    # api 命令
-    api_parser = subparsers.add_parser("api", help="更新 API CHANGELOG")
-    api_parser.add_argument(
-        "--type", "-t",
-        required=True,
-        choices=["add", "change", "deprecate", "remove"],
-        help="变更类型"
-    )
-    api_parser.add_argument(
-        "--endpoint", "-e",
-        required=True,
-        help="API 端点 (如 'POST /api/users')"
-    )
-    api_parser.add_argument(
-        "--description", "-d",
-        required=True,
-        help="接口描述"
-    )
-    api_parser.set_defaults(func=cmd_api)
-    
-    # req 命令
-    req_parser = subparsers.add_parser("req", help="创建需求文档")
-    req_parser.add_argument(
-        "--name", "-n",
-        required=True,
-        help="功能名称（用于文件名，如 'user-auth'）"
-    )
-    req_parser.add_argument(
-        "--title", "-t",
-        help="文档标题（如 '用户认证功能'）"
-    )
-    req_parser.add_argument(
-        "--author", "-a",
-        help="作者"
-    )
-    req_parser.add_argument(
-        "--force", "-f",
-        action="store_true",
-        help="强制覆盖已存在的文件"
-    )
-    req_parser.set_defaults(func=cmd_req)
-    
+    sub = parser.add_subparsers(dest="command", required=False)
+
+    sub.add_parser("init", help="初始化文档目录")
+
+    p_cl = sub.add_parser("changelog", help="追加 CHANGELOG 条目")
+    p_cl.add_argument("--type", "-t", required=True,
+                      choices=["added", "changed", "fixed", "removed", "deprecated", "security"])
+    p_cl.add_argument("--message", "-m", required=True, help="变更描述（用户视角）")
+
+    p_api = sub.add_parser("api", help="追加 API CHANGELOG 条目")
+    p_api.add_argument("--type", "-t", required=True,
+                       choices=["add", "change", "deprecate", "remove"])
+    p_api.add_argument("--endpoint", "-e", required=True, help="例：'POST /api/users'")
+    p_api.add_argument("--description", "-d", required=True, help="变更说明")
+    p_api.add_argument("--breaking", action="store_true",
+                       help="标注为 Breaking Change（前置 ⚠️ 标志）")
+
+    p_req = sub.add_parser("req", help="创建需求文档")
+    p_req.add_argument("--name", "-n", required=True, help="功能短名（用于文件名）")
+    p_req.add_argument("--title", "-t", help="文档标题")
+    p_req.add_argument("--author", "-a", help="作者")
+    p_req.add_argument("--force", "-f", action="store_true", help="覆盖已存在文件")
+
+    p_rel = sub.add_parser("release", help="把 [Unreleased] 段落转为正式版本")
+    p_rel.add_argument("--version", "-v", required=True, help="新版本号，如 1.2.0")
+    p_rel.add_argument("--target", choices=["changelog", "api"], default="changelog",
+                       help="处理 CHANGELOG 还是 API_CHANGELOG（默认 changelog）")
+
     args = parser.parse_args()
-    
-    if args.command is None:
+
+    handlers = {
+        "init": cmd_init,
+        "changelog": cmd_changelog,
+        "api": cmd_api,
+        "req": cmd_req,
+        "release": cmd_release,
+    }
+
+    if not args.command:
         parser.print_help()
         return
-    
-    args.func(args)
+    handlers[args.command](args)
 
 
 if __name__ == "__main__":
